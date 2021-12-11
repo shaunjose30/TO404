@@ -1,0 +1,256 @@
+---
+title: "AirBnB"
+author: "Shaun Jose"
+date: "11/29/2021"
+output: html_document
+---
+
+
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(scales)
+library(knitr)
+library(lubridate)
+library(tidyr)
+library(ggridges)
+library(leaflet)
+
+
+```{r}
+airbnb <- read.csv("AB_NYC_2019.csv")
+airbnb$last_review <- ymd(airbnb$last_review)
+str(airbnb)
+airbnb <- na.omit(airbnb)
+dim(airbnb)
+summary(airbnb)
+str(airbnb)
+```
+
+
+
+## Prices of Different Types of Room
+
+```{r}
+ggplot(airbnb, aes(room_type, price)) +
+   geom_boxplot(aes(fill = room_type)) +
+   scale_y_log10() +
+   labs(title = "Price by Room Type", x= "Room Type", y= "Price", fill = "Room Type",
+        subtitle = "Red line indicates the average price") +
+   theme(plot.title = element_text(hjust = 0.5)) +
+   geom_hline(yintercept = mean(airbnb$price), color = "red", linetype = 5)
+```
+Observations:
+1. Home/Apartment type rooms have the highest average price compared to private rooms and shared rooms. 
+2. Private rooms and shared rooms are the cheapest options available to customers as it falls below the average price line.
+
+
+## Relationship between Availability and Price
+
+```{r}
+ggplot(airbnb, aes(availability_365, price)) +
+  geom_point(alpha = 0.5, color = "green") + 
+  geom_segment(aes(x=availability_365, xend=availability_365, y=0, yend=price)) +
+  labs(title = " Relationship between Availability and Price", x ="Yearly Availability", y= "Price")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+Observations:
+1. Higher prices generally have lower availability.
+2. Lower prices are correlated with high availability throughout the year. 
+3. It's surprising to see that for prices above 5000, the yearly availability can be over 50 days. 
+
+
+## Availaibilty in Boroughs 
+
+```{r}
+ggplot(airbnb,aes(room_type,availability_365))+
+   geom_violin(aes(fill = neighbourhood_group,width = .9)) +
+   labs (title = "Availability in Boroughs", x = "Room Type", y = "Availability", fill ="Boroughs")+
+   theme(plot.title = element_text(hjust = 0.5))
+```
+Observations:
+1. Brooklyn and Manhattan's private room availability is similar to each other
+2. Brooklyn and Manhattan's entire home/apt availability is similar to each other.
+3. Staten island's share room availability is lower than all the other boroughs. 
+
+## Price Distribution of Different Boroughs for Entire Home/Apt Type
+
+```{r}
+head(airbnb[airbnb$room_type == "Entire home/apt",]) 
+era <- airbnb[airbnb$room_type == "Entire home/apt",]
+dim(era)
+P <- function(x){
+   if (x<300) {x<-"Below 300"} else if (x>=300 & x<=500) {x <- "300 to 500"} else if (x>500 & x<1000) {x <-"between 500-1000"} else {x <- "above 1000"}}
+
+era$priceC <- as.factor(sapply(era$price, P))
+head(era)
+```
+```{r}
+ggplot(era,aes(neighbourhood_group,price)) +
+   geom_jitter(aes(col= era$priceC)) +
+   geom_boxplot(alpha=0.5) +
+   scale_y_log10()+
+   labs(title = "Rental Rates in different Neighbourhoods", x= "Neighbourhood", y= "Price", col = "Rental Rate") +
+   theme(plot.title = element_text(hjust = 0.5))
+```
+Observation:
+1. Prices in Manhattan are distributed well compared to the other boroughs where majority of the prices of the rentals are below 300 in Manhattan.
+2. Brooklyn closely mirrors Manhattan's distributions but has fewer rentals for prices between 300 and 500 and higher number of rentals for prices below 300 compared to Manhattan
+3. There are very rentals with prices ranges of 300-500, 500-1000 and greater than 1000 in Staten Island
+4. Bronx has no rentals for prices between 500-100. 
+
+
+## Average Value of Minimum Night and Review of Each Boruough for Entire Home/Apt Type
+
+```{r}
+head(aggregate.data.frame(list(Review = era$number_of_reviews, Nights = era$minimum_nights), by = list(Neighbourhood = era$neighbourhood_group), mean))
+
+eraRN <- aggregate.data.frame(list(Review = era$number_of_reviews, Nights = era$minimum_nights), by = list(Neighbourhood = era$neighbourhood_group), mean)
+dim(eraRN)
+
+eraRN <- gather(eraRN, key = "variable", value = "average", -Neighbourhood)
+eraRN
+```
+
+
+```{r}
+ggplot(eraRN,aes(Neighbourhood, average))+
+   geom_col(aes(fill = variable), position = "dodge") +
+   coord_flip()+
+   labs(title = "Average Night and Review for each Neighbourhood", x= "Group of Neighb", y = "Value", fill = "Variable")+
+   geom_text(aes(label=comma(average)), hjust = -0.2, size = 3)+
+   theme(plot.title = element_text(hjust = 0.5))
+```
+Observations:
+
+1. Manhattan leads with the highest average nights spent by a guest renting an entire home/apt
+2. Staten Island has the highest average for number of reviews compared to other boroughs while having the lowest amount of nights spent by a customer.
+
+## Relationship between number of reviews and prices in Brooklyn and Manhattan
+
+```{r}
+A <- airbnb[order(airbnb$price, decreasing =T),]
+airbnbM_B <- A [A$neighbourhood_group== "Manhattan" | A$neighbourhood_group== "Brooklyn", ]
+head(airbnbM_B)
+```
+
+
+```{r}
+ggplot(airbnbM_B, aes(price, number_of_reviews)) +
+   geom_jitter(aes(col = number_of_reviews))+
+   scale_x_log10()+
+   facet_wrap(~neighbourhood_group, scales = "free")+
+   labs(title = "Correlation between Price and Review", x="Price", y= "Number of Reviews" )+
+   theme(plot.title = element_text(hjust = 0.5))
+```
+Observations:
+1. There isn't a noticeable relationship between reviews and price for the boroughs of Brooklyn and Manhattan.
+
+
+## Duration of stay in Manhattan and Brooklyn
+```{r}
+airbnbM_B$year <- year(airbnbM_B$last_review)
+airbnbM_B$year <- as.factor(airbnbM_B$year)
+head(airbnbM_B$year)
+```
+
+```{r}
+ggplot(airbnbM_B,aes(minimum_nights, year)) +
+   geom_density_ridges(fill="yellow")+
+   scale_x_continuous(limits = c(0,100),breaks = seq(0,100,10))
+```
+Observations: 
+1. A common trend among the years is that majority of the peaks are around 5-8 nights spent by a customer.
+2. Between 2012 - 2019, there have been slight peaks at 30 nights spent by a customer.
+
+## Host with the highest amount of reviews
+
+```{r}
+host <- airbnb[match(unique(airbnb$host_id), airbnb$host_id), ]
+host <- host[order(host$number_of_reviews, decreasing = T), ]
+host <- host[1:30, ]
+host
+```
+
+
+
+```{r}
+ggplot(host,aes(reorder(host$host_name,host$number_of_reviews), host$number_of_reviews))+
+   geom_col(fill ="magenta")+
+   facet_grid(rows = vars(neighbourhood_group), scales = "free_y")+
+   geom_point(aes(col=price))+
+   geom_text(aes(label= comma(host$number_of_reviews)), hjust=-0.4, size = 3)+
+   labs( x="Host Name", y= "Reviews")+
+   coord_flip()
+```
+Observations: 
+1. Dona from Queens has the highest number of reviews with more than 600 reviews from customers and the price of her listing is below $100
+2. Hosts from Queens have better average number of reviews compared to other Boroughs
+3. Staten Island and Bronx are not included in the top 30 number of reviews.
+
+## Which Borough has the most number of listings?
+```{r}
+
+city <- data.frame(distinct(airbnb,name,latitude,longitude))
+
+
+city[city == "NULL"] <- NA
+
+
+city <- city[complete.cases(city[,1:3]),]
+
+testMap <- leaflet() %>%
+  addTiles() %>% 
+  addMarkers(lat = airbnb$latitude, lng = airbnb$longitude, popup = airbnb$name, clusterOptions = markerClusterOptions())
+
+testMap
+
+```
+Observations:
+1. Manhattan has the highest number of listings with over 25,000 listings.
+2. Staten Island has the lowest number of listings.
+
+
+```{r}
+city <- data.frame(distinct(airbnb,name,price,latitude,longitude))
+
+
+city[city == "NULL"] <- NA
+
+
+city <- city[complete.cases(city[,1:3]),]
+pricetop <- arrange(city, (airbnb$price))[1:10,]
+str(pricetop)
+
+testMap <- leaflet() %>%
+  addTiles() %>% 
+  addMarkers(lat = airbnb$latitude, lng = airbnb$longitude, popup = airbnb$name, clusterOptions = markerClusterOptions())
+
+testMap
+
+
+leaflet(pricetop) %>% 
+  addTiles() %>%
+  addMarkers(lng = ~longitude, lat = ~latitude, popup = airbnb$name)
+
+```
+
+
+
+
+```{r}
+city <- data.frame(distinct(airbnb,name,price,latitude,longitude))
+
+
+city[city == "NULL"] <- NA
+
+
+city <- city[complete.cases(city[,1:3]),]
+pricetop <- arrange(city, (airbnb$price))[1:10,]
+str(pricetop)
+
+leaflet(pricetop) %>% 
+  addTiles() %>%
+  addMarkers(lng = airbnb$longitude, lat = airbnb$latitude, popup = airbnb$name)
+```
+
